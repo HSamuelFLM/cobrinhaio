@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>👑 Painel Admin - Snake Multiplayer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #0a0a1a, #1a1a3a);
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: #ffd700;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+        }
+
+        .panel {
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        input,
+        button {
+            font-family: 'Poppins', sans-serif;
+            padding: 12px 18px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 0.95em;
+        }
+
+        button {
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            font-weight: 600;
+        }
+
+        button:hover {
+            transform: scale(1.03);
+            opacity: 0.9;
+        }
+
+        .btn-kick {
+            background: #ff6b6b;
+        }
+
+        .btn-ban {
+            background: #e74c3c;
+        }
+
+        .btn-warn {
+            background: #ffd700;
+            color: #000;
+        }
+
+        .btn-mute {
+            background: #636e72;
+        }
+
+        .btn-action {
+            background: #4ecdc4;
+            color: #000;
+        }
+
+        #loginBox {
+            max-width: 400px;
+            margin: 100px auto;
+            text-align: center;
+        }
+
+        #dashboard {
+            display: none;
+        }
+
+        .player-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px;
+            margin: 6px 0;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .player-info {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .player-name {
+            font-weight: bold;
+            font-size: 1.05em;
+        }
+
+        .player-details {
+            font-size: 0.8em;
+            color: #888;
+        }
+
+        .player-actions {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .player-actions button {
+            padding: 8px 12px;
+            font-size: 0.85em;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .stat-box {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 22px 15px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2.2em;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .stat-label {
+            font-size: 0.8em;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .mass-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .mass-actions button {
+            flex: 1;
+            min-width: 150px;
+        }
+
+        @media (max-width: 600px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            h1 {
+                font-size: 1.8em;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>👑 Painel Administrativo</h1>
+
+        <div id="loginBox">
+            <div class="panel">
+                <h2 style="margin-bottom:15px;">Login</h2>
+                <input type="password" id="password" placeholder="Senha de admin"
+                    style="width:100%;margin-bottom:10px;">
+                <button onclick="login()" class="btn-action" style="width:100%;padding:14px;font-size:1.1em;">
+                    ENTRAR
+                </button>
+            </div>
+        </div>
+
+        <div id="dashboard">
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="stat-value" id="statOnline">0</div>
+                    <div class="stat-label">Jogadores Online</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="statPeak">0</div>
+                    <div class="stat-label">Pico Máximo</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="statDeaths">0</div>
+                    <div class="stat-label">Total de Mortes</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="statFood">0</div>
+                    <div class="stat-label">Comida no Mapa</div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3 style="margin-bottom:15px;">👥 Jogadores Conectados</h3>
+                <div id="playerList">
+                    <p style="text-align:center;color:#888;padding:20px;">Carregando...</p>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3 style="margin-bottom:15px;">🛠️ Ações em Massa</h3>
+                <div class="mass-actions">
+                    <button class="btn-kick" onclick="massAction('kickall')">👢 EXPULSAR TODOS</button>
+                    <button class="btn-action" onclick="refresh()">🔄 ATUALIZAR DADOS</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let adminToken = '';
+
+        async function login() {
+            const password = document.getElementById('password').value;
+
+            try {
+                const res = await fetch('/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    adminToken = data.token;
+                    document.getElementById('loginBox').style.display = 'none';
+                    document.getElementById('dashboard').style.display = 'block';
+                    refresh();
+                    setInterval(refresh, 3000);
+                } else {
+                    alert('❌ Senha incorreta!');
+                }
+            } catch (err) {
+                alert('Erro ao conectar ao servidor');
+            }
+        }
+
+        async function playerAction(action, target) {
+            if (action === 'kick' || action === 'ban') {
+                const msg = action === 'ban' ? 'BANIR permanentemente' : 'Expulsar';
+                if (!confirm(`${msg} este jogador?`)) return;
+            }
+
+            await sendAction(action, target);
+            refresh();
+        }
+
+        async function massAction(action) {
+            if (action === 'kickall') {
+                if (!confirm('Expulsar TODOS os jogadores?')) return;
+            }
+
+            const result = await sendAction(action);
+            if (result.success) {
+                alert(`✅ ${result.message}`);
+            }
+            refresh();
+        }
+
+        async function sendAction(action, target = '') {
+            try {
+                const res = await fetch('/admin/action', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${adminToken}`
+                    },
+                    body: JSON.stringify({ action, target })
+                });
+
+                return await res.json();
+            } catch (err) {
+                console.error('Erro na ação:', err);
+                return { success: false, message: 'Erro de conexão' };
+            }
+        }
+
+        async function refresh() {
+            // Atualizar lista de jogadores
+            const listResult = await sendAction('list');
+
+            if (listResult.success) {
+                const playerList = document.getElementById('playerList');
+
+                if (listResult.players.length === 0) {
+                    playerList.innerHTML = '<p style="text-align:center;color:#888;padding:20px;">Nenhum jogador online</p>';
+                } else {
+                    playerList.innerHTML = listResult.players.map(p => `
+            <div class="player-row">
+              <div class="player-info">
+                <span class="player-name">
+                  ${p.alive ? '🟢' : '💀'} ${p.name}
+                </span>
+                <span class="player-details">
+                  Score: ${p.score} | Tamanho: ${p.length} | IP: ${p.ip}
+                  ${p.warnings > 0 ? ` | ⚠️ ${p.warnings}/3 advertências` : ''}
+                </span>
+              </div>
+              <div class="player-actions">
+                <button class="btn-warn" onclick="playerAction('warn', '${p.name}')" title="Advertir">⚠️</button>
+                <button class="btn-mute" onclick="playerAction('mute', '${p.name}')" title="Silenciar">🔇</button>
+                <button class="btn-kick" onclick="playerAction('kick', '${p.name}')" title="Expulsar">👢</button>
+                <button class="btn-ban" onclick="playerAction('ban', '${p.name}')" title="Banir">🚫</button>
+              </div>
+            </div>
+          `).join('');
+                }
+            }
+
+            // Atualizar estatísticas
+            const statsResult = await sendAction('stats');
+
+            if (statsResult.success) {
+                const stats = statsResult.stats;
+                document.getElementById('statOnline').textContent = stats.online;
+                document.getElementById('statPeak').textContent = stats.peak;
+                document.getElementById('statDeaths').textContent = stats.totalDeaths;
+                document.getElementById('statFood').textContent = stats.foodOnMap;
+            }
+        }
+
+        // Permitir login com Enter
+        document.getElementById('password').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') login();
+        });
+    </script>
+</body>
+
+</html>

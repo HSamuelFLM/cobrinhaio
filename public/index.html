@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>🐍 Snake Multiplayer</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <!-- TELA DE PERSONALIZAÇÃO -->
+    <div id="setupScreen">
+        <div class="setup-container">
+            <h1>🐍 Snake Multiplayer</h1>
+            <p class="subtitle">Personalize sua cobra antes de jogar</p>
+
+            <div class="setup-grid">
+                <div class="preview-box">
+                    <canvas id="previewCanvas" width="350" height="250"></canvas>
+                    <div id="previewName">Seu Nome</div>
+                </div>
+
+                <div class="colors-box">
+                    <h3>🎨 Cores</h3>
+                    <div class="color-group">
+                        <label>Corpo</label>
+                        <div class="color-row"><input type="color" id="bodyColor" value="#4ECDC4"><input type="text"
+                                id="bodyHex" value="#4ECDC4" maxlength="7"></div>
+                        <div class="presets" id="bodyPresets"></div>
+                    </div>
+                    <div class="color-group">
+                        <label>Cabeça</label>
+                        <div class="color-row"><input type="color" id="headColor" value="#44B3A8"><input type="text"
+                                id="headHex" value="#44B3A8" maxlength="7"></div>
+                        <div class="presets" id="headPresets"></div>
+                    </div>
+                    <div class="color-group">
+                        <label>Olhos</label>
+                        <div class="color-row"><input type="color" id="eyeColor" value="#FFFFFF"><input type="text"
+                                id="eyeHex" value="#FFFFFF" maxlength="7"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="skins-section">
+                <h3>🎭 Skins Prontas</h3>
+                <div class="skins-grid" id="skinsGrid">
+                    <div style="grid-column:1/-1;text-align:center;color:#888;padding:20px;">Carregando skins...</div>
+                </div>
+            </div>
+
+            <div class="start-section">
+                <input type="text" id="nameInput" placeholder="Digite seu nome" maxlength="20">
+                <button id="playButton">JOGAR! 🎮</button>
+            </div>
+
+            <p class="tip">💡 <b>Mouse</b> = Mover | <b>Clique</b> = Boost (gasta tamanho)<br>⚡ Boost solta rastro de
+                orbes | 🍎 800 comidas no mapa</p>
+        </div>
+    </div>
+
+    <!-- TELA DO JOGO -->
+    <div id="gameScreen" style="display:none;">
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="hud">
+            <div id="scoreBox"><span class="hud-label">PONTOS</span><span id="scoreValue">0</span></div>
+            <div id="lengthBox"><span class="hud-label">TAMANHO</span><span id="lengthValue">10</span></div>
+            <div id="boostBox"><span class="hud-label">BOOST</span><span id="boostStatus">✅ PRONTO</span></div>
+        </div>
+
+        <div id="leaderboard">
+            <h3>🏆 RANKING</h3>
+            <ol id="leaderboardList">
+                <li style="color:#888;">Aguardando...</li>
+            </ol>
+        </div>
+
+        <div id="minimap"><canvas id="minimapCanvas" width="150" height="150"></canvas></div>
+
+        <div id="deathPopup" style="display:none;">
+            <div class="death-content">
+                <h2>💀 Você Morreu!</h2>
+                <p class="death-score">Score: <span id="deathScore">0</span></p>
+                <p class="death-countdown">Renasce em <span id="countdown">3</span>s</p>
+            </div>
+        </div>
+
+        <div id="mobileBoost"><button id="boostButton">⚡ BOOST</button></div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="game.js"></script>
+</body>
+
+</html>

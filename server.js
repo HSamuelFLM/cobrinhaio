@@ -432,7 +432,7 @@ function checkCollisions(snake, foodGrid, consumedFoods) {
             } else {
                 killSnake(other, snake.id);
             }
-            return !snake.alive;
+            return true;
         }
 
         for (let i = 1; i < other.segments.length; i++) {

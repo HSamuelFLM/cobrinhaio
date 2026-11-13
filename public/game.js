@@ -1,9 +1,10 @@
-const socket = io({ transports: ['websocket', 'polling'] });
+const socket = io({ transports: ['websocket'], upgrade: false });
 
 let myId = null, gameConfig = null;
 let players = [], foods = [], leaderboard = [];
 let camera = { x: 0, y: 0 };
 let mouseAngle = 0, isBoosting = false, gameRunning = false;
+let lastInputSentAt = 0;
 
 // Interpolação
 let previousState = null, currentState = null, stateTimestamp = 0;
@@ -132,7 +133,10 @@ function setupInput() {
 function gameLoop(ts) {
     if (!gameRunning) return;
     requestAnimationFrame(gameLoop);
-    socket.emit('input', { angle: mouseAngle, boost: isBoosting });
+    if (ts - lastInputSentAt >= 50) {
+        socket.emit('input', { angle: mouseAngle, boost: isBoosting });
+        lastInputSentAt = ts;
+    }
     if (currentState) { const me = currentState.players.find(p => p.id === myId); if (me?.segments?.length) { const h = me.segments[0]; camera.x += (h.x - canvas.width / 2 - camera.x) * 0.1; camera.y += (h.y - canvas.height / 2 - camera.y) * 0.1; } }
     render();
 }
@@ -185,7 +189,23 @@ function drawMinimap() { minimapCtx.fillStyle = 'rgba(0,0,0,0.8)'; minimapCtx.fi
 
 // ============= HUD =============
 function updateHUD(p) { document.getElementById('scoreValue').textContent = Math.floor(p.score); document.getElementById('lengthValue').textContent = p.length; const b = document.getElementById('boostStatus'); if (p.boosting) { b.textContent = '⚡ ATIVO'; b.style.color = '#ff6b6b'; } else if (p.score <= 10) { b.textContent = '❌ PRECISA COMER'; b.style.color = '#ff4444'; } else { b.textContent = '✅ PRONTO'; b.style.color = '#4ecdc4'; } }
-function updateLeaderboard() { const l = document.getElementById('leaderboardList'); l.innerHTML = leaderboard.length ? leaderboard.map((e, i) => `<li>${i === 0 ? '🥇 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : `${i + 1}. `}${e.name}: ${e.score}</li>`).join('') : '<li style="color:#888;">Nenhum jogador</li>'; }
+function updateLeaderboard() {
+    const list = document.getElementById('leaderboardList');
+    list.replaceChildren();
+    if (!leaderboard.length) {
+        const empty = document.createElement('li');
+        empty.textContent = 'Nenhum jogador';
+        empty.style.color = '#888';
+        list.appendChild(empty);
+        return;
+    }
+    leaderboard.forEach((entry, index) => {
+        const item = document.createElement('li');
+        const medal = index === 0 ? '🥇 ' : index === 1 ? '🥈 ' : index === 2 ? '🥉 ' : `${index + 1}. `;
+        item.textContent = `${medal}${entry.name}: ${entry.score}`;
+        list.appendChild(item);
+    });
+}
 function showDeath(s) { const p = document.getElementById('deathPopup'); document.getElementById('deathScore').textContent = s; p.style.display = 'flex'; let c = 3; document.getElementById('countdown').textContent = c; const i = setInterval(() => { c--; document.getElementById('countdown').textContent = c; if (c <= 0) { clearInterval(i); p.style.display = 'none'; } }, 1000); }
 
 // ============= START =============

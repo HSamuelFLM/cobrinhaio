@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, "fix/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax checks
+        run: npm run check
+      - name: HTTP smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          ADMIN_PASSWORD='ci-test-password' ADMIN_SECRET='ci-test-secret-at-least-32-bytes-long' PORT=3187 node server.js > /tmp/cobrinhaio.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3187/ > /tmp/cobrinhaio-index.html; then
+              break
+            fi
+            sleep 1
+          done
+          grep -q 'previewCanvas\|gameCanvas\|setupScreen' /tmp/cobrinhaio-index.html
+          status=$(curl --silent --output /tmp/login.json --write-out '%{http_code}' -X POST http://127.0.0.1:3187/admin/login \
+            -H 'Content-Type: application/json' \
+            --data '{"password":"wrong-password"}')
+          test "$status" = "401"
+          grep -q '"success":false' /tmp/login.json
+          status=$(curl --silent --output /tmp/login-ok.json --write-out '%{http_code}' -X POST http://127.0.0.1:3187/admin/login \
+            -H 'Content-Type: application/json' \
+            --data '{"password":"ci-test-password"}')
+          test "$status" = "200"
+          grep -q '"success":true' /tmp/login-ok.json

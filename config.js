@@ -32,7 +32,6 @@ const CONFIG = {
     TICK_RATE: 20,
     MAX_PLAYERS: 50,
     RESPAWN_DELAY: 3000,
-    ADMIN_PASSWORD: 'admin123',
 
     // Cores
     PRESET_COLORS: [

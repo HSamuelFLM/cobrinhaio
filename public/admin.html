@@ -236,14 +236,16 @@
         </div>
     </div>
 
+    <script src="runtime-config.js"></script>
     <script>
+        const API_BASE = window.GAME_SERVER_URL || '';
         let adminToken = '';
 
         async function login() {
             const password = document.getElementById('password').value;
 
             try {
-                const res = await fetch('/admin/login', {
+                const res = await fetch(`${API_BASE}/admin/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password })
@@ -289,7 +291,7 @@
 
         async function sendAction(action, target = '') {
             try {
-                const res = await fetch('/admin/action', {
+                const res = await fetch(`${API_BASE}/admin/action`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

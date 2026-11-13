@@ -7,6 +7,9 @@ const CONFIG = require('./config');
 require('dotenv').config();
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const ADMIN_SECRET = process.env.ADMIN_SECRET || '';
+const FRONTEND_ORIGINS = new Set((process.env.FRONTEND_ORIGIN || '').split(',').map(value => value.trim()).filter(Boolean));
+const LOCAL_ORIGINS = new Set(['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://127.0.0.1:5173']);
+function isAllowedOrigin(origin) { return !origin || FRONTEND_ORIGINS.has(origin) || LOCAL_ORIGINS.has(origin); }
 const loginAttempts = new Map();
 
 function safeEqual(a, b) {
@@ -41,8 +44,22 @@ const io = socketIO(server, {
     pingTimeout: 3000,
     transports: ['websocket'],
     maxHttpBufferSize: 10 * 1024,
+    cors: { origin: (origin, callback) => callback(null, isAllowedOrigin(origin)), methods: ['GET', 'POST'] },
+    allowRequest: (req, callback) => callback(null, isAllowedOrigin(req.headers.origin)),
 });
 
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && isAllowedOrigin(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Vary', 'Origin');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    }
+    if (req.method === 'OPTIONS') return res.sendStatus(origin && !isAllowedOrigin(origin) ? 403 : 204);
+    next();
+});
+app.get('/healthz', (req, res) => res.json({ ok: true, players: state.players.size }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '10kb' }));
 

@@ -1,4 +1,4 @@
-const socket = io({ transports: ['websocket'], upgrade: false });
+const socket = io(window.GAME_SERVER_URL || undefined, { transports: ['websocket'], upgrade: false });
 
 let myId = null, gameConfig = null;
 let players = [], foods = [], leaderboard = [];

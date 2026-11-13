@@ -20,7 +20,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 20
+          node-version: 22
       - name: Install dependencies
         run: npm install --ignore-scripts
       - name: Syntax checks
@@ -38,8 +38,14 @@ jobs:
             fi
             sleep 1
           done
-          grep -q 'gameCanvas\|setupScreen\|Cobrinha' /tmp/cobrinhaio-index.html
-          curl --fail --silent -X POST http://127.0.0.1:3187/admin/login \
+          grep -q 'previewCanvas\|gameCanvas\|setupScreen' /tmp/cobrinhaio-index.html
+          status=$(curl --silent --output /tmp/login.json --write-out '%{http_code}' -X POST http://127.0.0.1:3187/admin/login \
             -H 'Content-Type: application/json' \
-            --data '{"password":"wrong-password"}' | grep -q '"success":false'
-          curl --fail --silent http://127.0.0.1:3187/socket.io/ > /dev/null && exit 1 || true
+            --data '{"password":"wrong-password"}')
+          test "$status" = "401"
+          grep -q '"success":false' /tmp/login.json
+          status=$(curl --silent --output /tmp/login-ok.json --write-out '%{http_code}' -X POST http://127.0.0.1:3187/admin/login \
+            -H 'Content-Type: application/json' \
+            --data '{"password":"ci-test-password"}')
+          test "$status" = "200"
+          grep -q '"success":true' /tmp/login-ok.json

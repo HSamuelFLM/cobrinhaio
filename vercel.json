@@ -1,0 +1,6 @@
+{
+  "buildCommand": "npm run check",
+  "outputDirectory": "public",
+  "framework": null,
+  "cleanUrls": true
+}

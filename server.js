@@ -79,6 +79,30 @@ const state = {
     }
 };
 
+// ============= POSIÇÃO SEGURA DE NASCIMENTO =============
+function findSpawnPosition(excludeId = null) {
+    const margin = 500;
+    const minClearance = 140;
+    let best = null;
+    let bestClearance = -1;
+    for (let attempt = 0; attempt < 120; attempt++) {
+        const candidate = { x: margin + Math.random() * (CONFIG.WORLD_WIDTH - margin * 2), y: margin + Math.random() * (CONFIG.WORLD_HEIGHT - margin * 2) };
+        let nearest = Infinity;
+        for (const [id, other] of state.players) {
+            if (id === excludeId || !other.alive) continue;
+            for (let i = 0; i < other.segments.length; i += 2) {
+                const segment = other.segments[i];
+                nearest = Math.min(nearest, Math.hypot(candidate.x - segment.x, candidate.y - segment.y));
+                if (nearest < minClearance) break;
+            }
+            if (nearest < minClearance) break;
+        }
+        if (nearest > bestClearance) { best = candidate; bestClearance = nearest; }
+        if (nearest >= minClearance) return candidate;
+    }
+    return best || { x: CONFIG.WORLD_WIDTH / 2, y: CONFIG.WORLD_HEIGHT / 2 };
+}
+
 // ============= CLASSES =============
 class Snake {
     constructor(id, name, ip) {
@@ -95,9 +119,9 @@ class Snake {
 
     reset() {
         const angle = Math.random() * Math.PI * 2;
-        const margin = 500;
-        const x = margin + Math.random() * (CONFIG.WORLD_WIDTH - margin * 2);
-        const y = margin + Math.random() * (CONFIG.WORLD_HEIGHT - margin * 2);
+        const spawn = findSpawnPosition(this.id);
+        const x = spawn.x;
+        const y = spawn.y;
 
         this.segments = [];
         for (let i = 0; i < CONFIG.INITIAL_LENGTH; i++) {
@@ -116,6 +140,7 @@ class Snake {
         this.lastActivity = Date.now();
         this.boostDistance = 0;
         this.trailDistance = 0;
+        this.spawnProtectionUntil = Date.now() + 2500;
     }
 
     get head() {
@@ -244,6 +269,11 @@ function generateFood() {
         state.foods.push(new Food());
     }
 
+    // Embaralha para impedir que qualquer limite de transmissão favoreça as primeiras linhas.
+    for (let i = state.foods.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [state.foods[i], state.foods[j]] = [state.foods[j], state.foods[i]];
+    }
     console.log(`🍎 ${state.foods.length} comidas em ${clusters} clusters (grade ${cols}x${rows})`);
 }
 
@@ -333,9 +363,12 @@ function checkCollisions(snake) {
         }
     }
 
+    // Proteção curta evita mortes inevitáveis durante o nascimento/renascimento.
+    if (Date.now() < snake.spawnProtectionUntil) return !snake.alive;
+
     // Colisão com outras cobras.
     for (const [otherId, other] of state.players) {
-        if (otherId === snake.id || !other.alive || other.segments.length === 0) continue;
+        if (otherId === snake.id || !other.alive || other.segments.length === 0 || Date.now() < other.spawnProtectionUntil) continue;
         if (Math.hypot(head.x - other.head.x, head.y - other.head.y) < CONFIG.COLLISION_DISTANCE) {
             killSnake(snake);
             killSnake(other);
@@ -375,10 +408,10 @@ function gameLoop() {
         if (snake.alive) checkCollisions(snake);
     }
 
-    // Reabastecer comida
-    while (state.foods.length < CONFIG.FOOD_COUNT) {
-        state.foods.push(new Food());
-    }
+    // Reabastecer comida e limitar o acúmulo de orbes deixados por mortes/boost.
+    while (state.foods.length < CONFIG.FOOD_COUNT) state.foods.push(new Food());
+    const maxFood = CONFIG.FOOD_COUNT * 2;
+    while (state.foods.length > maxFood) state.foods.splice(Math.floor(Math.random() * state.foods.length), 1);
 
     // Leaderboard
     state.leaderboard = getLeaderboard();
@@ -412,7 +445,7 @@ function broadcastState() {
 
     io.emit('gameState', {
         players: playersData,
-        foods: state.foods.slice(0, 200).map(f => ({
+        foods: state.foods.map(f => ({
             id: f.id, x: f.x, y: f.y, color: f.color, value: f.value, radius: f.radius
         })),
         leaderboard: state.leaderboard,

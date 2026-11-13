@@ -4,7 +4,8 @@
     "description": "Slither.io multiplayer - 20 TPS servidor, 60+ FPS cliente com interpolação",
     "main": "server.js",
     "scripts": {
-        "start": "node server.js"
+        "start": "node server.js",
+        "check": "node --check server.js && node --check config.js && node --check public/game.js"
     },
     "dependencies": {
         "express": "^4.18.2",

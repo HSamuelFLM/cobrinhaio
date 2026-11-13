@@ -4,29 +4,47 @@ const socketIO = require('socket.io');
 const path = require('path');
 const crypto = require('crypto');
 const CONFIG = require('./config');
-const fs = require('fs');
-let ADMIN_PASSWORD = 'admin'; // fallback
+require('dotenv').config();
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+const ADMIN_SECRET = process.env.ADMIN_SECRET || '';
+const loginAttempts = new Map();
 
-try {
-    // Lê o arquivo e remove quebras de linha
-    ADMIN_PASSWORD = fs.readFileSync('./senha.txt', 'utf8').trim();
-    console.log('✅ Senha do admin carregada do arquivo');
-} catch (err) {
-    console.warn('⚠️  Arquivo senha.txt não encontrado! Usando senha padrão.');
-    // Mantém o fallback
+function safeEqual(a, b) {
+    const left = Buffer.from(String(a));
+    const right = Buffer.from(String(b));
+    return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function createAdminToken() {
+    const payload = Buffer.from(JSON.stringify({ exp: Date.now() + 60 * 60 * 1000 })).toString('base64url');
+    const signature = crypto.createHmac('sha256', ADMIN_SECRET).update(payload).digest('base64url');
+    return `${payload}.${signature}`;
+}
+
+function isValidAdminToken(token) {
+    if (!ADMIN_SECRET || typeof token !== 'string') return false;
+    const parts = token.split('.');
+    if (parts.length !== 2) return false;
+    const expected = crypto.createHmac('sha256', ADMIN_SECRET).update(parts[0]).digest('base64url');
+    if (!safeEqual(parts[1], expected)) return false;
+    try {
+        const payload = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
+        return Number.isFinite(payload.exp) && payload.exp > Date.now();
+    } catch {
+        return false;
+    }
 }
 const app = express();
 const server = http.createServer(app);
 const io = socketIO(server, {
     pingInterval: 5000,
     pingTimeout: 3000,
-    transports: ['websocket', 'polling'],
+    transports: ['websocket'],
     maxHttpBufferSize: 1e6,
-    cors: { origin: '*' }
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));
 
 // ============= ESTADO DO JOGO =============
 const state = {
@@ -35,7 +53,6 @@ const state = {
     leaderboard: [],
     bannedIPs: new Set(),
     mutedPlayers: new Set(),
-    adminTokens: new Set(),
     stats: {
         started: Date.now(),
         totalPlayers: 0,
@@ -170,8 +187,8 @@ class Snake {
 class Food {
     constructor(x, y, color, value) {
         this.id = crypto.randomUUID();
-        this.x = x || Math.random() * CONFIG.WORLD_WIDTH;
-        this.y = y || Math.random() * CONFIG.WORLD_HEIGHT;
+        this.x = x ?? Math.random() * CONFIG.WORLD_WIDTH;
+        this.y = y ?? Math.random() * CONFIG.WORLD_HEIGHT;
         this.color = color || CONFIG.PRESET_COLORS[Math.floor(Math.random() * CONFIG.PRESET_COLORS.length)];
         this.value = value || CONFIG.FOOD_VALUE;
         this.radius = this.value >= CONFIG.SUPER_FOOD_VALUE ? CONFIG.SUPER_FOOD_RADIUS : CONFIG.FOOD_RADIUS;
@@ -289,22 +306,25 @@ function checkCollisions(snake) {
         }
     }
 
-    // Colisão com outras cobras
+    // Colisão da cabeça com o próprio corpo (ignora os 3 segmentos próximos).
+    for (let i = 3; i < snake.segments.length; i++) {
+        if (Math.hypot(head.x - snake.segments[i].x, head.y - snake.segments[i].y) < CONFIG.COLLISION_DISTANCE) {
+            killSnake(snake);
+            return true;
+        }
+    }
+
+    // Colisão com outras cobras.
     for (const [otherId, other] of state.players) {
         if (otherId === snake.id || !other.alive || other.segments.length === 0) continue;
-
-        // Cabeça com cabeça
         if (Math.hypot(head.x - other.head.x, head.y - other.head.y) < CONFIG.COLLISION_DISTANCE) {
             killSnake(snake);
             killSnake(other);
             return true;
         }
-
-        // Cabeça com corpo (ignora 3 primeiros segmentos da própria cobra)
-        const start = (otherId === snake.id) ? 3 : 1;
-        for (let i = start; i < other.segments.length; i++) {
+        for (let i = 1; i < other.segments.length; i++) {
             if (Math.hypot(head.x - other.segments[i].x, head.y - other.segments[i].y) < CONFIG.COLLISION_DISTANCE) {
-                killSnake(snake, otherId === snake.id ? null : otherId);
+                killSnake(snake, otherId);
                 return true;
             }
         }
@@ -383,18 +403,29 @@ function broadcastState() {
 
 // ============= ADMIN API =============
 app.post('/admin/login', (req, res) => {
-    if (req.body.password === ADMIN_PASSWORD) {
-        const token = crypto.randomBytes(32).toString('hex');
-        state.adminTokens.add(token);
-        setTimeout(() => state.adminTokens.delete(token), 3600000);
-        return res.json({ success: true, token });
+    if (!ADMIN_PASSWORD || !ADMIN_SECRET) {
+        return res.status(503).json({ success: false, message: 'Painel admin desativado: configure ADMIN_PASSWORD e ADMIN_SECRET.' });
     }
-    res.json({ success: false, message: 'Senha incorreta' });
+    const ip = req.socket.remoteAddress || 'unknown';
+    const now = Date.now();
+    const attempts = loginAttempts.get(ip) || { count: 0, resetAt: now + 15 * 60 * 1000 };
+    if (attempts.resetAt <= now) { attempts.count = 0; attempts.resetAt = now + 15 * 60 * 1000; }
+    if (attempts.count >= 5) return res.status(429).json({ success: false, message: 'Muitas tentativas. Tente novamente em 15 minutos.' });
+    if (safeEqual(req.body?.password || '', ADMIN_PASSWORD)) {
+        loginAttempts.delete(ip);
+        return res.json({ success: true, token: createAdminToken() });
+    }
+    attempts.count++;
+    loginAttempts.set(ip, attempts);
+    if (loginAttempts.size > 10000) {
+        for (const [key, value] of loginAttempts) if (value.resetAt <= now) loginAttempts.delete(key);
+    }
+    res.status(401).json({ success: false, message: 'Senha incorreta' });
 });
 
 function requireAdmin(req, res, next) {
     const token = req.headers.authorization?.split(' ')[1];
-    if (!state.adminTokens.has(token)) return res.status(401).json({ error: 'Não autorizado' });
+    if (!isValidAdminToken(token)) return res.status(401).json({ error: 'Não autorizado' });
     next();
 }
 
@@ -409,7 +440,10 @@ function findPlayer(query) {
 }
 
 app.post('/admin/action', requireAdmin, (req, res) => {
-    const { action, target } = req.body;
+    const { action, target = '' } = req.body || {};
+    if (typeof action !== 'string' || typeof target !== 'string' || target.length > 128) {
+        return res.status(400).json({ success: false, message: 'Parâmetros inválidos' });
+    }
 
     switch (action) {
         case 'list': {
@@ -442,8 +476,10 @@ app.post('/admin/action', requireAdmin, (req, res) => {
             return res.json({ success: true, message: `${result.player.name} banido` });
         }
 
-        case 'unban':
-            return res.json({ success: state.bannedIPs.delete(target), message: state.bannedIPs.delete(target) ? 'Desbanido' : 'IP não encontrado' });
+        case 'unban': {
+            const removed = state.bannedIPs.delete(target);
+            return res.json({ success: removed, message: removed ? 'Desbanido' : 'IP não encontrado' });
+        }
 
         case 'warn': {
             const result = findPlayer(target);
@@ -544,23 +580,28 @@ io.on('connection', (socket) => {
         const player = state.players.get(socket.id);
         if (!player || !player.alive) return;
         player.lastActivity = Date.now();
-        player.targetAngle = data.angle;
-        player.boosting = data.boost && player.score > CONFIG.INITIAL_LENGTH;
+        if (!data || typeof data.angle !== 'number' || !Number.isFinite(data.angle)) return;
+        player.targetAngle = Math.max(-Math.PI, Math.min(Math.PI, data.angle));
+        player.boosting = data.boost === true && player.score > CONFIG.INITIAL_LENGTH;
     });
 
     socket.on('setName', (name) => {
         if (state.mutedPlayers.has(socket.id)) return;
         const player = state.players.get(socket.id);
-        if (player && name && name.trim()) player.name = name.trim().substring(0, 20);
+        if (player && typeof name === 'string') {
+            const cleanName = name.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 20);
+            if (cleanName) player.name = cleanName;
+        }
     });
 
     socket.on('setColors', (colors) => {
         const player = state.players.get(socket.id);
-        if (player) {
-            if (colors.body) player.colors.body = colors.body;
-            if (colors.head) player.colors.head = colors.head;
-            if (colors.eye) player.colors.eye = colors.eye;
-            if (colors.skinId) player.skinId = colors.skinId;
+        if (player && colors && typeof colors === 'object') {
+            const validColor = value => typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
+            if (validColor(colors.body)) player.colors.body = colors.body;
+            if (validColor(colors.head)) player.colors.head = colors.head;
+            if (validColor(colors.eye)) player.colors.eye = colors.eye;
+            if (typeof colors.skinId === 'string' && CONFIG.SKINS.some(s => s.id === colors.skinId)) player.skinId = colors.skinId;
         }
     });
 
@@ -578,7 +619,7 @@ io.on('connection', (socket) => {
 generateFood();
 gameLoop();
 
-server.listen(CONFIG.PORT, '0.0.0.0', () => {
+if (require.main === module) server.listen(Number(process.env.PORT) || CONFIG.PORT, '0.0.0.0', () => {
     const os = require('os');
     const nets = os.networkInterfaces();
     let ip = 'localhost';
@@ -596,5 +637,8 @@ server.listen(CONFIG.PORT, '0.0.0.0', () => {
     console.log(`  ⚙️  ${CONFIG.TICK_RATE} TPS | 🎮 60+ FPS`);
     console.log(`  🍎 ${CONFIG.FOOD_COUNT} comidas | 💨 Rastro: ${CONFIG.BOOST_TRAIL_SPACING}px`);
     console.log('═══════════════════════════════════');
+    if (!ADMIN_PASSWORD || !ADMIN_SECRET) console.warn('⚠️  Painel admin desativado: configure ADMIN_PASSWORD e ADMIN_SECRET.');
     console.log('');
 });
+
+module.exports = server;

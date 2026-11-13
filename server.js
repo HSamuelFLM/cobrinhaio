@@ -426,31 +426,62 @@ function gameLoop() {
 }
 
 function broadcastState() {
+    // Compartilha apenas o estado necessário para a área visível de cada jogador.
+    // Antes, todos recebiam até 1.600 orbes + todos os segmentos 20 vezes por segundo.
     const playersData = [];
     for (const snake of state.players.values()) {
-        if (snake.alive) {
-            playersData.push({
-                id: snake.id,
-                name: snake.name,
-                segments: snake.segments.slice(0, 50),
-                colors: snake.colors,
-                score: Math.floor(snake.score),
-                boosting: snake.boosting,
-                angle: snake.angle,
-                length: snake.length,
-                speed: snake.speed
-            });
-        }
+        if (!snake.alive || snake.segments.length === 0) continue;
+        playersData.push({
+            id: snake.id,
+            name: snake.name,
+            segments: snake.segments.slice(0, 50),
+            colors: snake.colors,
+            score: Math.floor(snake.score),
+            boosting: snake.boosting,
+            angle: snake.angle,
+            length: snake.length,
+            speed: snake.speed
+        });
     }
 
-    io.emit('gameState', {
-        players: playersData,
-        foods: state.foods.map(f => ({
-            id: f.id, x: f.x, y: f.y, color: f.color, value: f.value, radius: f.radius
-        })),
-        leaderboard: state.leaderboard,
-        serverTime: Date.now()
-    });
+    const now = Date.now();
+    for (const socket of io.sockets.sockets.values()) {
+        const viewer = state.players.get(socket.id);
+        if (!viewer || !viewer.alive) continue;
+
+        const head = viewer.head;
+        const minX = head.x - 1100;
+        const maxX = head.x + 1100;
+        const minY = head.y - 700;
+        const maxY = head.y + 700;
+
+        // Comidas fora da câmera não precisam trafegar pela rede.
+        const visibleFoods = [];
+        for (const food of state.foods) {
+            if (food.x < minX || food.x > maxX || food.y < minY || food.y > maxY) continue;
+            // O cliente não usa o ID do orbe; removê-lo reduz o tamanho do pacote.
+            visibleFoods.push({
+                x: food.x, y: food.y, color: food.color,
+                value: food.value, radius: food.radius
+            });
+        }
+
+        // Cobra distante aparece no minimapa apenas como cabeça; as próximas
+        // recebem o corpo completo para manter as colisões visuais no campo de visão.
+        const visiblePlayers = playersData.map(player => {
+            const dx = player.segments[0].x - head.x;
+            const dy = player.segments[0].y - head.y;
+            if (player.id === socket.id || (Math.abs(dx) <= 1800 && Math.abs(dy) <= 1300)) return player;
+            return { ...player, segments: player.segments.slice(0, 1) };
+        });
+
+        socket.emit('gameState', {
+            players: visiblePlayers,
+            foods: visibleFoods,
+            leaderboard: state.leaderboard,
+            serverTime: now
+        });
+    }
 }
 
 // ============= ADMIN API =============

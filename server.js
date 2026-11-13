@@ -40,8 +40,8 @@ function isValidAdminToken(token) {
 const app = express();
 const server = http.createServer(app);
 const io = socketIO(server, {
-    pingInterval: 5000,
-    pingTimeout: 3000,
+    pingInterval: 25000,
+    pingTimeout: 60000,
     transports: ['websocket'],
     maxHttpBufferSize: 10 * 1024,
     cors: { origin: (origin, callback) => callback(null, isAllowedOrigin(origin)), methods: ['GET', 'POST'] },
@@ -292,7 +292,7 @@ function getLeaderboard() {
 }
 
 // ============= MORTE =============
-function killSnake(snake, killerId = null) {
+function killSnake(snake, killerId = null, reason = 'unknown') {
     if (!snake.alive) return;
 
     snake.alive = false;
@@ -319,7 +319,8 @@ function killSnake(snake, killerId = null) {
 
     io.to(snake.id).emit('died', {
         score: Math.floor(snake.score),
-        killer: killerId ? state.players.get(killerId)?.name : null
+        killer: killerId ? state.players.get(killerId)?.name : null,
+        reason
     });
 
     setTimeout(() => {
@@ -381,7 +382,7 @@ function checkCollisions(snake, foodGrid, consumedFoods) {
 
     if (head.x < 0 || head.x > CONFIG.WORLD_WIDTH ||
         head.y < 0 || head.y > CONFIG.WORLD_HEIGHT) {
-        killSnake(snake);
+        killSnake(snake, null, 'world-boundary');
         return true;
     }
 
@@ -423,12 +424,12 @@ function checkCollisions(snake, foodGrid, consumedFoods) {
             // A cabeça cuja ponta frontal fica mais distante da cabeça adversária perde.
             // Em empate exato, ambas morrem para manter o resultado simétrico.
             if (Math.abs(thisFrontDistanceSq - otherFrontDistanceSq) < 0.0001) {
-                killSnake(snake);
-                killSnake(other);
+                killSnake(snake, null, 'head-to-head');
+                killSnake(other, null, 'head-to-head');
             } else if (thisFrontDistanceSq > otherFrontDistanceSq) {
-                killSnake(snake, otherId);
+                killSnake(snake, otherId, 'head-to-head');
             } else {
-                killSnake(other, snake.id);
+                killSnake(other, snake.id, 'head-to-head');
             }
             return true;
         }
@@ -437,7 +438,7 @@ function checkCollisions(snake, foodGrid, consumedFoods) {
             const dx = head.x - other.segments[i].x;
             const dy = head.y - other.segments[i].y;
             if (dx * dx + dy * dy < COLLISION_DISTANCE_SQ) {
-                killSnake(snake, otherId);
+                killSnake(snake, otherId, 'body-collision');
                 return true;
             }
         }
@@ -450,15 +451,8 @@ function checkCollisions(snake, foodGrid, consumedFoods) {
 function gameLoop() {
     const startTime = Date.now();
 
-    // Limpar inativos
-    const now = Date.now();
-    for (const [id, snake] of state.players) {
-        if (now - snake.lastActivity > 15000) {
-            if (snake.alive) killSnake(snake);
-            state.players.delete(id);
-        }
-    }
-
+    // Jogadores conectados não são removidos por falta de input: abas em segundo
+    // plano reduzem timers e requestAnimationFrame. A remoção é feita em disconnect.
     // Mover
     for (const snake of state.players.values()) {
         if (snake.alive) snake.move();
@@ -760,7 +754,7 @@ io.on('connection', (socket) => {
         const player = state.players.get(socket.id);
         if (player) {
             console.log(`🔴 ${player.name} saiu`);
-            if (player.alive) killSnake(player);
+            if (player.alive) killSnake(player, null, 'disconnect');
             state.players.delete(socket.id);
         }
     });

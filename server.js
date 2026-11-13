@@ -616,10 +616,10 @@ io.on('connection', (socket) => {
 });
 
 // ============= INICIAR =============
-generateFood();
-gameLoop();
-
-if (require.main === module) server.listen(Number(process.env.PORT) || CONFIG.PORT, '0.0.0.0', () => {
+if (require.main === module) {
+    generateFood();
+    gameLoop();
+    server.listen(Number(process.env.PORT) || CONFIG.PORT, '0.0.0.0', () => {
     const os = require('os');
     const nets = os.networkInterfaces();
     let ip = 'localhost';
@@ -639,6 +639,7 @@ if (require.main === module) server.listen(Number(process.env.PORT) || CONFIG.PO
     console.log('═══════════════════════════════════');
     if (!ADMIN_PASSWORD || !ADMIN_SECRET) console.warn('⚠️  Painel admin desativado: configure ADMIN_PASSWORD e ADMIN_SECRET.');
     console.log('');
-});
+    });
+}
 
 module.exports = server;

@@ -96,14 +96,28 @@ function renderSkinGrid(skins) {
 
 // ============= SOCKET EVENTS =============
 function setupSocketEvents() {
-    socket.on('init', data => { myId = data.id; gameConfig = data.config; renderSkinGrid(data.config.skins); });
+    socket.on('init', data => {
+        myId = data.id;
+        gameConfig = data.config;
+        renderSkinGrid(data.config.skins);
+        // A reconexão cria um novo socket/jogador no servidor; reaplica as
+        // preferências e mantém o jogo ativo sem exigir recarregar a página.
+        if (gameRunning) {
+            previousState = null;
+            currentState = null;
+            socket.emit('setName', document.getElementById('nameInput').value.trim());
+            socket.emit('setColors', { ...customColors, skinId: selectedSkinId });
+            lastInputSentAt = 0;
+            socket.emit('input', { angle: mouseAngle, boost: false });
+        }
+    });
     socket.on('gameState', state => {
         previousState = currentState; currentState = state; stateTimestamp = performance.now();
         players = state.players || []; foods = state.foods || []; leaderboard = state.leaderboard || [];
         const me = players.find(p => p.id === myId); if (me?.segments?.length) updateHUD(me);
         updateLeaderboard(); drawMinimap();
     });
-    socket.on('died', d => showDeath(d.score));
+    socket.on('died', d => showDeath(d.score, d.reason, d.killer));
     socket.on('respawn', () => { document.getElementById('deathPopup').style.display = 'none'; });
     socket.on('kicked', m => { alert(`👢 ${m.message || 'Expulso'}`); location.reload(); });
     socket.on('banned', m => { alert(`🚫 ${m.message || 'Banido'}`); location.reload(); });
@@ -206,7 +220,26 @@ function updateLeaderboard() {
         list.appendChild(item);
     });
 }
-function showDeath(s) { const p = document.getElementById('deathPopup'); document.getElementById('deathScore').textContent = s; p.style.display = 'flex'; let c = 3; document.getElementById('countdown').textContent = c; const i = setInterval(() => { c--; document.getElementById('countdown').textContent = c; if (c <= 0) { clearInterval(i); p.style.display = 'none'; } }, 1000); }
+function showDeath(s, reason = 'unknown', killer = null) {
+    const p = document.getElementById('deathPopup');
+    document.getElementById('deathScore').textContent = s;
+    const labels = {
+        'world-boundary': 'Você atingiu o limite do mapa.',
+        'head-to-head': 'Colisão entre cabeças.',
+        'body-collision': killer ? `Você atingiu o corpo de ${killer}.` : 'Colisão com outra cobra.',
+        'disconnect': 'A conexão com o servidor foi encerrada.',
+        'unknown': 'Causa não identificada; o evento foi registrado.'
+    };
+    document.getElementById('deathReason').textContent = labels[reason] || 'Causa não identificada; o evento foi registrado.';
+    p.style.display = 'flex';
+    let c = 3;
+    document.getElementById('countdown').textContent = c;
+    const i = setInterval(() => {
+        c--;
+        document.getElementById('countdown').textContent = c;
+        if (c <= 0) { clearInterval(i); p.style.display = 'none'; }
+    }, 1000);
+}
 
 // ============= START =============
 window.addEventListener('DOMContentLoaded', init);

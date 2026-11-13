@@ -8,6 +8,10 @@ let lastInputSentAt = 0;
 
 // Interpolação
 let previousState = null, currentState = null, stateTimestamp = 0;
+let previousPlayersById = new Map();
+let lastMinimapDrawAt = 0;
+let lastLeaderboardSignature = '';
+let lastHudSignature = '';
 
 let customColors = { body: '#4ECDC4', head: '#44B3A8', eye: '#FFFFFF' };
 let selectedSkinId = 'classic';
@@ -37,6 +41,7 @@ function resizeCanvases() {
 
 // ============= PREVIEW =============
 let previewTime = 0;
+let previewAnimationId = 0;
 function startPreview() {
     const pc = document.getElementById('previewCanvas');
     const pctx = pc.getContext('2d');
@@ -59,7 +64,7 @@ function startPreview() {
                 }
             }
         });
-        requestAnimationFrame(anim);
+        previewAnimationId = requestAnimationFrame(anim);
     })();
 }
 
@@ -112,10 +117,17 @@ function setupSocketEvents() {
         }
     });
     socket.on('gameState', state => {
-        previousState = currentState; currentState = state; stateTimestamp = performance.now();
+        previousState = currentState;
+        previousPlayersById = previousState ? new Map(previousState.players.map(player => [player.id, player])) : new Map();
+        currentState = state;
+        stateTimestamp = performance.now();
         players = state.players || []; foods = state.foods || []; leaderboard = state.leaderboard || [];
         const me = players.find(p => p.id === myId); if (me?.segments?.length) updateHUD(me);
-        updateLeaderboard(); drawMinimap();
+        updateLeaderboard();
+        if (stateTimestamp - lastMinimapDrawAt >= 250) {
+            drawMinimap();
+            lastMinimapDrawAt = stateTimestamp;
+        }
     });
     socket.on('died', d => showDeath(d.score, d.reason, d.killer));
     socket.on('respawn', () => { document.getElementById('deathPopup').style.display = 'none'; });
@@ -128,6 +140,8 @@ function startGame() {
     const n = document.getElementById('nameInput').value.trim(); if (n) socket.emit('setName', n);
     socket.emit('setColors', { ...customColors, skinId: selectedSkinId });
     document.getElementById('setupScreen').style.display = 'none'; document.getElementById('gameScreen').style.display = 'block';
+    if (previewAnimationId) cancelAnimationFrame(previewAnimationId);
+    previewAnimationId = 0;
     setupInput(); gameRunning = true; requestAnimationFrame(gameLoop);
 }
 
@@ -174,10 +188,11 @@ function render() {
 
         for (const p of currentState.players) {
             if (!p.segments?.length) continue;
-            let pp = null; if (previousState) pp = previousState.players.find(x => x.id === p.id);
+            const pp = previousPlayersById.get(p.id);
             const cl = p.colors || { body: '#4ECDC4', head: '#44B3A8', eye: '#FFFFFF' };
-            const segs = p.segments.slice(0, 50);
-            for (let i = segs.length - 1; i >= 0; i--) {
+            const segs = p.segments;
+            const segmentCount = Math.min(segs.length, 50);
+            for (let i = segmentCount - 1; i >= 0; i--) {
                 let seg = segs[i];
                 if (pp?.segments?.[i]) { const ps = pp.segments[i]; seg = { x: ps.x + (seg.x - ps.x) * t, y: ps.y + (seg.y - ps.y) * t }; }
                 const sx = seg.x - camera.x, sy = seg.y - camera.y; if (sx < -40 || sx > canvas.width + 40 || sy < -40 || sy > canvas.height + 40) continue;
@@ -202,8 +217,22 @@ function render() {
 function drawMinimap() { minimapCtx.fillStyle = 'rgba(0,0,0,0.8)'; minimapCtx.fillRect(0, 0, 150, 150); if (!gameConfig || !currentState) return; const sx = 150 / gameConfig.worldWidth, sy = 150 / gameConfig.worldHeight; minimapCtx.strokeStyle = '#ff4444'; minimapCtx.lineWidth = 1; minimapCtx.strokeRect(0, 0, 150, 150); for (const p of currentState.players) { if (!p.segments?.length) continue; const h = p.segments[0]; minimapCtx.fillStyle = p.id === myId ? '#fff' : (p.colors?.body || '#4ECDC4'); minimapCtx.fillRect(h.x * sx, h.y * sy, 3, 3); } }
 
 // ============= HUD =============
-function updateHUD(p) { document.getElementById('scoreValue').textContent = Math.floor(p.score); document.getElementById('lengthValue').textContent = p.length; const b = document.getElementById('boostStatus'); if (p.boosting) { b.textContent = '⚡ ATIVO'; b.style.color = '#ff6b6b'; } else if (p.score <= 10) { b.textContent = '❌ PRECISA COMER'; b.style.color = '#ff4444'; } else { b.textContent = '✅ PRONTO'; b.style.color = '#4ecdc4'; } }
+function updateHUD(p) {
+    const score = Math.floor(p.score);
+    const status = p.boosting ? '⚡ ATIVO' : (score <= 10 ? '❌ PRECISA COMER' : '✅ PRONTO');
+    const signature = `${score}|${p.length}|${status}`;
+    if (signature === lastHudSignature) return;
+    lastHudSignature = signature;
+    document.getElementById('scoreValue').textContent = score;
+    document.getElementById('lengthValue').textContent = p.length;
+    const b = document.getElementById('boostStatus');
+    b.textContent = status;
+    b.style.color = p.boosting ? '#ff6b6b' : (score <= 10 ? '#ff4444' : '#4ecdc4');
+}
 function updateLeaderboard() {
+    const signature = leaderboard.map(entry => `${entry.name}:${entry.score}`).join('|');
+    if (signature === lastLeaderboardSignature) return;
+    lastLeaderboardSignature = signature;
     const list = document.getElementById('leaderboardList');
     list.replaceChildren();
     if (!leaderboard.length) {

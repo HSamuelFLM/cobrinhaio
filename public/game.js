@@ -162,7 +162,9 @@ function gameLoop(ts) {
     if (!gameRunning) return;
     requestAnimationFrame(gameLoop);
     if (ts - lastInputSentAt >= 50) {
-        socket.emit('input', { angle: mouseAngle, boost: isBoosting });
+        // Controles são estado atual, não comandos históricos: descarta pacotes
+        // atrasados em vez de formar fila atrás de uma conexão congestionada.
+        socket.volatile.emit('input', { angle: mouseAngle, boost: isBoosting });
         lastInputSentAt = ts;
     }
     if (currentState) { const me = currentState.players.find(p => p.id === myId); if (me?.segments?.length) { const h = me.segments[0]; camera.x += (h.x - canvas.width / 2 - camera.x) * 0.1; camera.y += (h.y - canvas.height / 2 - camera.y) * 0.1; } }

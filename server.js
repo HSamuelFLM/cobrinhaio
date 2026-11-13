@@ -40,7 +40,7 @@ const io = socketIO(server, {
     pingInterval: 5000,
     pingTimeout: 3000,
     transports: ['websocket'],
-    maxHttpBufferSize: 1e6,
+    maxHttpBufferSize: 10 * 1024,
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -441,7 +441,7 @@ function findPlayer(query) {
 
 app.post('/admin/action', requireAdmin, (req, res) => {
     const { action, target = '' } = req.body || {};
-    if (typeof action !== 'string' || typeof target !== 'string' || target.length > 128) {
+    if (typeof action !== 'string' || typeof target !== 'string' || target.length > 128 || (action !== 'list' && !target.trim())) {
         return res.status(400).json({ success: false, message: 'Parâmetros inválidos' });
     }
 
@@ -576,10 +576,14 @@ io.on('connection', (socket) => {
         }
     });
 
+    let lastInputAt = 0;
     socket.on('input', (data) => {
         const player = state.players.get(socket.id);
         if (!player || !player.alive) return;
-        player.lastActivity = Date.now();
+        const now = Date.now();
+        if (now - lastInputAt < 45) return;
+        lastInputAt = now;
+        player.lastActivity = now;
         if (!data || typeof data.angle !== 'number' || !Number.isFinite(data.angle)) return;
         player.targetAngle = Math.max(-Math.PI, Math.min(Math.PI, data.angle));
         player.boosting = data.boost === true && player.score > CONFIG.INITIAL_LENGTH;

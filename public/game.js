@@ -98,7 +98,7 @@ function renderSkinGrid(skins) {
 function setupSocketEvents() {
     socket.on('init', data => { myId = data.id; gameConfig = data.config; renderSkinGrid(data.config.skins); });
     socket.on('gameState', state => {
-        previousState = currentState; currentState = state; stateTimestamp = state.serverTime || Date.now();
+        previousState = currentState; currentState = state; stateTimestamp = performance.now();
         players = state.players || []; foods = state.foods || []; leaderboard = state.leaderboard || [];
         const me = players.find(p => p.id === myId); if (me?.segments?.length) updateHUD(me);
         updateLeaderboard(); drawMinimap();
@@ -150,7 +150,7 @@ function render() {
     if (gameConfig) { ctx.strokeStyle = '#ff4444'; ctx.lineWidth = 4; ctx.strokeRect(-camera.x, -camera.y, gameConfig.worldWidth, gameConfig.worldHeight); }
 
     if (currentState) {
-        const now = Date.now(), tickTime = 1000 / 20, t = Math.min((now - stateTimestamp) / tickTime, 1.0);
+        const now = performance.now(), tickTime = 1000 / 20, t = Math.max(0, Math.min((now - stateTimestamp) / tickTime, 1.0));
 
         for (const f of currentState.foods) {
             const sx = f.x - camera.x, sy = f.y - camera.y; if (sx < -50 || sx > canvas.width + 50 || sy < -50 || sy > canvas.height + 50) continue;

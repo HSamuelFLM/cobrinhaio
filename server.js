@@ -533,7 +533,9 @@ function broadcastState() {
             return { ...player, segments: player.segments.slice(0, 1) };
         });
 
-        socket.emit('gameState', {
+        // Estados são snapshots descartáveis: não enfileirar snapshots antigos
+        // quando a conexão está congestionada. O próximo tick traz o estado atual.
+        socket.volatile.emit('gameState', {
             players: visiblePlayers,
             foods: visibleFoods,
             leaderboard: state.leaderboard,

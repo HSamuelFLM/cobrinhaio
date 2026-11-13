@@ -365,10 +365,8 @@ function visitFoodBounds(grid, minX, minY, maxX, maxY, visitor) {
 
 function getHeadFrontPosition(snake) {
     const head = snake.head;
-    const next = snake.segments[1];
-    const angle = next
-        ? Math.atan2(head.y - next.y, head.x - next.x)
-        : snake.angle;
+    // Usa a rotação atual da cobra para projetar a ponta frontal da cabeça.
+    const angle = snake.angle;
     const radius = CONFIG.BASE_RADIUS;
     return {
         x: head.x + Math.cos(angle) * radius,

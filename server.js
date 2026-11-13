@@ -331,51 +331,114 @@ function killSnake(snake, killerId = null) {
 }
 
 // ============= COLISÕES =============
-function checkCollisions(snake) {
+const FOOD_GRID_CELL_SIZE = 120;
+const COLLISION_DISTANCE_SQ = CONFIG.COLLISION_DISTANCE * CONFIG.COLLISION_DISTANCE;
+
+function foodCellKey(x, y) {
+    return `${Math.floor(x / FOOD_GRID_CELL_SIZE)}:${Math.floor(y / FOOD_GRID_CELL_SIZE)}`;
+}
+
+function buildFoodGrid(foods) {
+    const grid = new Map();
+    for (const food of foods) {
+        const key = foodCellKey(food.x, food.y);
+        let bucket = grid.get(key);
+        if (!bucket) grid.set(key, bucket = []);
+        bucket.push(food);
+    }
+    return grid;
+}
+
+function visitFoodBounds(grid, minX, minY, maxX, maxY, visitor) {
+    const minCellX = Math.floor(minX / FOOD_GRID_CELL_SIZE);
+    const maxCellX = Math.floor(maxX / FOOD_GRID_CELL_SIZE);
+    const minCellY = Math.floor(minY / FOOD_GRID_CELL_SIZE);
+    const maxCellY = Math.floor(maxY / FOOD_GRID_CELL_SIZE);
+    for (let cy = minCellY; cy <= maxCellY; cy++) {
+        for (let cx = minCellX; cx <= maxCellX; cx++) {
+            const bucket = grid.get(`${cx}:${cy}`);
+            if (!bucket) continue;
+            for (const food of bucket) visitor(food);
+        }
+    }
+}
+
+function getHeadFrontPosition(snake) {
+    const head = snake.head;
+    const next = snake.segments[1];
+    const angle = next
+        ? Math.atan2(head.y - next.y, head.x - next.x)
+        : snake.angle;
+    const radius = CONFIG.BASE_RADIUS;
+    return {
+        x: head.x + Math.cos(angle) * radius,
+        y: head.y + Math.sin(angle) * radius
+    };
+}
+
+function checkCollisions(snake, foodGrid, consumedFoods) {
     if (!snake.alive || snake.segments.length === 0) return true;
 
     const head = snake.head;
 
-    // Bordas
     if (head.x < 0 || head.x > CONFIG.WORLD_WIDTH ||
         head.y < 0 || head.y > CONFIG.WORLD_HEIGHT) {
         killSnake(snake);
         return true;
     }
 
-    // Coletar comida
-    for (let i = state.foods.length - 1; i >= 0; i--) {
-        const food = state.foods[i];
-        if (Math.hypot(head.x - food.x, head.y - food.y) < CONFIG.FOOD_COLLECT_RADIUS) {
-            snake.score += food.value;
-            state.stats.totalFoodEaten++;
-            state.foods.splice(i, 1);
-        }
-    }
+    const collectRadius = CONFIG.FOOD_COLLECT_RADIUS;
+    const collectRadiusSq = collectRadius * collectRadius;
+    visitFoodBounds(foodGrid, head.x - collectRadius, head.y - collectRadius,
+        head.x + collectRadius, head.y + collectRadius, food => {
+            if (consumedFoods.has(food)) return;
+            const dx = head.x - food.x;
+            const dy = head.y - food.y;
+            if (dx * dx + dy * dy < collectRadiusSq) {
+                consumedFoods.add(food);
+                snake.score += food.value;
+                state.stats.totalFoodEaten++;
+            }
+        });
 
-    // Ignore os segmentos imediatamente atrás da cabeça: a distância entre eles é determinada pela velocidade por tick.
-    // Comparar esses segmentos com o raio de colisão causava mortes instantâneas no spawn.
-    const selfCollisionIgnore = Math.ceil(CONFIG.COLLISION_DISTANCE / Math.max(snake.speed, CONFIG.MIN_SPEED)) + 1;
-    for (let i = selfCollisionIgnore; i < snake.segments.length; i++) {
-        if (Math.hypot(head.x - snake.segments[i].x, head.y - snake.segments[i].y) < CONFIG.COLLISION_DISTANCE) {
-            killSnake(snake);
-            return true;
-        }
-    }
-
-    // Proteção curta evita mortes inevitáveis durante o nascimento/renascimento.
+    // O corpo da própria cobra não é uma superfície letal: apenas bordas,
+    // outras cobras e demais regras do jogo podem causar a morte.
     if (Date.now() < snake.spawnProtectionUntil) return !snake.alive;
 
-    // Colisão com outras cobras.
     for (const [otherId, other] of state.players) {
-        if (otherId === snake.id || !other.alive || other.segments.length === 0 || Date.now() < other.spawnProtectionUntil) continue;
-        if (Math.hypot(head.x - other.head.x, head.y - other.head.y) < CONFIG.COLLISION_DISTANCE) {
-            killSnake(snake);
-            killSnake(other);
-            return true;
+        if (otherId === snake.id || !other.alive || other.segments.length === 0 ||
+            Date.now() < other.spawnProtectionUntil) continue;
+
+        const otherHead = other.head;
+        const headDx = head.x - otherHead.x;
+        const headDy = head.y - otherHead.y;
+        if (headDx * headDx + headDy * headDy < COLLISION_DISTANCE_SQ) {
+            const front = getHeadFrontPosition(snake);
+            const otherFront = getHeadFrontPosition(other);
+            const thisFrontDx = front.x - otherHead.x;
+            const thisFrontDy = front.y - otherHead.y;
+            const otherFrontDx = otherFront.x - head.x;
+            const otherFrontDy = otherFront.y - head.y;
+            const thisFrontDistanceSq = thisFrontDx * thisFrontDx + thisFrontDy * thisFrontDy;
+            const otherFrontDistanceSq = otherFrontDx * otherFrontDx + otherFrontDy * otherFrontDy;
+
+            // A cabeça cuja ponta frontal fica mais distante da cabeça adversária perde.
+            // Em empate exato, ambas morrem para manter o resultado simétrico.
+            if (Math.abs(thisFrontDistanceSq - otherFrontDistanceSq) < 0.0001) {
+                killSnake(snake);
+                killSnake(other);
+            } else if (thisFrontDistanceSq > otherFrontDistanceSq) {
+                killSnake(snake, otherId);
+            } else {
+                killSnake(other, snake.id);
+            }
+            return !snake.alive;
         }
+
         for (let i = 1; i < other.segments.length; i++) {
-            if (Math.hypot(head.x - other.segments[i].x, head.y - other.segments[i].y) < CONFIG.COLLISION_DISTANCE) {
+            const dx = head.x - other.segments[i].x;
+            const dy = head.y - other.segments[i].y;
+            if (dx * dx + dy * dy < COLLISION_DISTANCE_SQ) {
                 killSnake(snake, otherId);
                 return true;
             }
@@ -403,10 +466,13 @@ function gameLoop() {
         if (snake.alive) snake.move();
     }
 
-    // Colisões
+    // Índice espacial evita varrer todos os orbes para cada jogador a cada tick.
+    const foodGrid = buildFoodGrid(state.foods);
+    const consumedFoods = new Set();
     for (const snake of state.players.values()) {
-        if (snake.alive) checkCollisions(snake);
+        if (snake.alive) checkCollisions(snake, foodGrid, consumedFoods);
     }
+    if (consumedFoods.size) state.foods = state.foods.filter(food => !consumedFoods.has(food));
 
     // Reabastecer comida e limitar o acúmulo de orbes deixados por mortes/boost.
     while (state.foods.length < CONFIG.FOOD_COUNT) state.foods.push(new Food());
@@ -445,6 +511,7 @@ function broadcastState() {
     }
 
     const now = Date.now();
+    const foodGridForBroadcast = buildFoodGrid(state.foods);
     for (const socket of io.sockets.sockets.values()) {
         const viewer = state.players.get(socket.id);
         if (!viewer || !viewer.alive) continue;
@@ -455,16 +522,15 @@ function broadcastState() {
         const minY = head.y - 700;
         const maxY = head.y + 700;
 
-        // Comidas fora da câmera não precisam trafegar pela rede.
+        // Consulta por células: não percorre o array global de orbes para cada jogador.
         const visibleFoods = [];
-        for (const food of state.foods) {
-            if (food.x < minX || food.x > maxX || food.y < minY || food.y > maxY) continue;
+        visitFoodBounds(foodGridForBroadcast, minX, minY, maxX, maxY, food => {
             // O cliente não usa o ID do orbe; removê-lo reduz o tamanho do pacote.
             visibleFoods.push({
                 x: food.x, y: food.y, color: food.color,
                 value: food.value, radius: food.radius
             });
-        }
+        });
 
         // Cobra distante aparece no minimapa apenas como cabeça; as próximas
         // recebem o corpo completo para manter as colisões visuais no campo de visão.

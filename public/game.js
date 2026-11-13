@@ -109,7 +109,6 @@ function setupSocketEvents() {
             socket.emit('setColors', { ...customColors, skinId: selectedSkinId });
             lastInputSentAt = 0;
             socket.emit('input', { angle: mouseAngle, boost: false });
-            requestAnimationFrame(gameLoop);
         }
     });
     socket.on('gameState', state => {

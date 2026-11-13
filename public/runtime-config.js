@@ -1,2 +1,2 @@
-/* Definido para o deploy. Vazio mantém o servidor local na mesma origem. */
-window.GAME_SERVER_URL = '';
+/* URL pública do servidor multiplayer no Render. */
+window.GAME_SERVER_URL = 'https://cobrinhaio-server.onrender.com';

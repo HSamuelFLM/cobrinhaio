@@ -315,22 +315,21 @@
                 if (listResult.players.length === 0) {
                     playerList.innerHTML = '<p style="text-align:center;color:#888;padding:20px;">Nenhum jogador online</p>';
                 } else {
+                    const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
                     playerList.innerHTML = listResult.players.map(p => `
             <div class="player-row">
               <div class="player-info">
-                <span class="player-name">
-                  ${p.alive ? '🟢' : '💀'} ${p.name}
-                </span>
+                <span class="player-name">${p.alive ? '🟢' : '💀'} ${escapeHtml(p.name)}</span>
                 <span class="player-details">
-                  Score: ${p.score} | Tamanho: ${p.length} | IP: ${p.ip}
-                  ${p.warnings > 0 ? ` | ⚠️ ${p.warnings}/3 advertências` : ''}
+                  Score: ${Number(p.score) || 0} | Tamanho: ${Number(p.length) || 0} | IP: ${escapeHtml(p.ip)}
+                  ${p.warnings > 0 ? ` | ⚠️ ${Number(p.warnings)}/3 advertências` : ''}
                 </span>
               </div>
               <div class="player-actions">
-                <button class="btn-warn" onclick="playerAction('warn', '${p.name}')" title="Advertir">⚠️</button>
-                <button class="btn-mute" onclick="playerAction('mute', '${p.name}')" title="Silenciar">🔇</button>
-                <button class="btn-kick" onclick="playerAction('kick', '${p.name}')" title="Expulsar">👢</button>
-                <button class="btn-ban" onclick="playerAction('ban', '${p.name}')" title="Banir">🚫</button>
+                <button class="btn-warn" data-action="warn" data-target="${escapeHtml(p.name)}" title="Advertir">⚠️</button>
+                <button class="btn-mute" data-action="mute" data-target="${escapeHtml(p.name)}" title="Silenciar">🔇</button>
+                <button class="btn-kick" data-action="kick" data-target="${escapeHtml(p.name)}" title="Expulsar">👢</button>
+                <button class="btn-ban" data-action="ban" data-target="${escapeHtml(p.name)}" title="Banir">🚫</button>
               </div>
             </div>
           `).join('');
@@ -348,6 +347,12 @@
                 document.getElementById('statFood').textContent = stats.foodOnMap;
             }
         }
+
+        document.getElementById('playerList').addEventListener('click', event => {
+            const button = event.target.closest('button[data-action]');
+            if (!button) return;
+            playerAction(button.dataset.action, button.dataset.target);
+        });
 
         // Permitir login com Enter
         document.getElementById('password').addEventListener('keypress', (e) => {

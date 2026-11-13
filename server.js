@@ -323,8 +323,10 @@ function checkCollisions(snake) {
         }
     }
 
-    // Colisão da cabeça com o próprio corpo (ignora os 3 segmentos próximos).
-    for (let i = 3; i < snake.segments.length; i++) {
+    // Ignore os segmentos imediatamente atrás da cabeça: a distância entre eles é determinada pela velocidade por tick.
+    // Comparar esses segmentos com o raio de colisão causava mortes instantâneas no spawn.
+    const selfCollisionIgnore = Math.ceil(CONFIG.COLLISION_DISTANCE / Math.max(snake.speed, CONFIG.MIN_SPEED)) + 1;
+    for (let i = selfCollisionIgnore; i < snake.segments.length; i++) {
         if (Math.hypot(head.x - snake.segments[i].x, head.y - snake.segments[i].y) < CONFIG.COLLISION_DISTANCE) {
             killSnake(snake);
             return true;

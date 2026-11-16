@@ -114,7 +114,7 @@ function setupSocketEvents() {
             socket.emit('setColors', { ...customColors, skinId: selectedSkinId });
             lastInputSentAt = 0;
             socket.emit('input', { angle: mouseAngle });
-            socket.volatile.emit('boost', false);
+            socket.emit('boost', false);
         }
     });
     socket.on('gameState', state => {
@@ -152,7 +152,7 @@ function setBoost(enabled) {
     isBoosting = enabled;
     // Envia apenas a transição do sprint imediatamente; direção continua
     // sendo transmitida em baixa frequência para evitar tráfego desnecessário.
-    if (gameRunning && socket.connected) socket.volatile.emit('boost', enabled);
+    if (gameRunning && socket.connected) socket.emit('boost', enabled);
 }
 
 function setupInput() {

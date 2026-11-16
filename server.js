@@ -729,7 +729,14 @@ io.on('connection', (socket) => {
         player.lastActivity = now;
         if (!data || typeof data.angle !== 'number' || !Number.isFinite(data.angle)) return;
         player.targetAngle = Math.max(-Math.PI, Math.min(Math.PI, data.angle));
-        player.boosting = data.boost === true && player.score > CONFIG.INITIAL_LENGTH;
+    });
+
+    // O boost é uma mudança de estado pontual; não deve esperar o próximo
+    // pacote periódico de direção (50 ms) nem ser descartado pelo limitador.
+    socket.on('boost', enabled => {
+        const player = state.players.get(socket.id);
+        if (!player || !player.alive || typeof enabled !== 'boolean') return;
+        player.boosting = enabled && player.score > CONFIG.INITIAL_LENGTH;
     });
 
     socket.on('setName', (name) => {

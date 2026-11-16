@@ -113,7 +113,8 @@ function setupSocketEvents() {
             socket.emit('setName', document.getElementById('nameInput').value.trim());
             socket.emit('setColors', { ...customColors, skinId: selectedSkinId });
             lastInputSentAt = 0;
-            socket.emit('input', { angle: mouseAngle, boost: false });
+            socket.emit('input', { angle: mouseAngle });
+            socket.emit('boost', false);
         }
     });
     socket.on('gameState', state => {
@@ -146,15 +147,33 @@ function startGame() {
 }
 
 // ============= INPUT =============
+function setBoost(enabled) {
+    if (isBoosting === enabled) return;
+    isBoosting = enabled;
+    // Envia apenas a transição do sprint imediatamente; direção continua
+    // sendo transmitida em baixa frequência para evitar tráfego desnecessário.
+    if (gameRunning && socket.connected) socket.emit('boost', enabled);
+}
+
 function setupInput() {
     canvas.addEventListener('mousemove', e => { const r = canvas.getBoundingClientRect(); mouseAngle = Math.atan2(e.clientY - r.top - canvas.height / 2, e.clientX - r.left - canvas.width / 2); });
-    canvas.addEventListener('mousedown', () => isBoosting = true);
-    canvas.addEventListener('mouseup', () => isBoosting = false);
-    canvas.addEventListener('mouseleave', () => isBoosting = false);
+    canvas.addEventListener('mousedown', () => setBoost(true));
+    window.addEventListener('mouseup', () => setBoost(false));
+    canvas.addEventListener('mouseleave', () => setBoost(false));
     canvas.addEventListener('touchmove', e => { e.preventDefault(); const t = e.touches[0], r = canvas.getBoundingClientRect(); mouseAngle = Math.atan2(t.clientY - r.top - canvas.height / 2, t.clientX - r.left - canvas.width / 2); }, { passive: false });
-    canvas.addEventListener('touchstart', e => { e.preventDefault(); isBoosting = true; });
-    canvas.addEventListener('touchend', () => isBoosting = false);
-    const bb = document.getElementById('boostButton'); if (bb) { bb.addEventListener('mousedown', () => isBoosting = true); bb.addEventListener('mouseup', () => isBoosting = false); bb.addEventListener('mouseleave', () => isBoosting = false); bb.addEventListener('touchstart', e => { e.preventDefault(); isBoosting = true; }); bb.addEventListener('touchend', () => isBoosting = false); }
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); setBoost(true); });
+    canvas.addEventListener('touchend', () => setBoost(false));
+    canvas.addEventListener('touchcancel', () => setBoost(false));
+    window.addEventListener('blur', () => setBoost(false));
+    const bb = document.getElementById('boostButton');
+    if (bb) {
+        bb.addEventListener('mousedown', () => setBoost(true));
+        bb.addEventListener('mouseup', () => setBoost(false));
+        bb.addEventListener('mouseleave', () => setBoost(false));
+        bb.addEventListener('touchstart', e => { e.preventDefault(); setBoost(true); });
+        bb.addEventListener('touchend', () => setBoost(false));
+        bb.addEventListener('touchcancel', () => setBoost(false));
+    }
 }
 
 // ============= GAME LOOP (60+ FPS) =============
@@ -164,7 +183,7 @@ function gameLoop(ts) {
     if (ts - lastInputSentAt >= 50) {
         // Controles são estado atual, não comandos históricos: descarta pacotes
         // atrasados em vez de formar fila atrás de uma conexão congestionada.
-        socket.volatile.emit('input', { angle: mouseAngle, boost: isBoosting });
+        socket.volatile.emit('input', { angle: mouseAngle });
         lastInputSentAt = ts;
     }
     if (currentState) { const me = currentState.players.find(p => p.id === myId); if (me?.segments?.length) { const h = me.segments[0]; camera.x += (h.x - canvas.width / 2 - camera.x) * 0.1; camera.y += (h.y - canvas.height / 2 - camera.y) * 0.1; } }
